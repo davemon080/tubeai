@@ -31,14 +31,19 @@ function getPool() {
 }
 
 let oauth2ClientInstance: any = null;
-function getOAuth2Client() {
-  if (oauth2ClientInstance) return oauth2ClientInstance;
-  oauth2ClientInstance = new google.auth.OAuth2(
+function getOAuth2Client(req?: express.Request) {
+  // Always recreate or update the redirect URI based on the current request if on Vercel/Production
+  // to ensure the callback URL matches the environment (prod vs preview)
+  const protocol = req?.headers['x-forwarded-proto'] || req?.protocol || 'http';
+  const host = req?.headers.host || 'localhost:3000';
+  const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+  const redirectUri = `${baseUrl.replace(/\/$/, '')}/auth/callback`;
+
+  return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID || 'MISSING_CLIENT_ID',
     process.env.GOOGLE_CLIENT_SECRET || 'MISSING_CLIENT_SECRET',
-    process.env.APP_URL ? `${process.env.APP_URL}/auth/callback` : 'http://localhost:3000/auth/callback'
+    redirectUri
   );
-  return oauth2ClientInstance;
 }
 
 const SCOPES = [
@@ -50,18 +55,20 @@ const SCOPES = [
 
 // OAUTH ROUTES
 app.get('/api/auth/url', (req, res) => {
-  const client = getOAuth2Client();
+  const client = getOAuth2Client(req);
   const url = client.generateAuthUrl({
     access_type: 'offline', // Critical for refresh tokens
     scope: SCOPES,
     prompt: 'consent' // Ensure we get a refresh token every time during testing if needed
   });
+  // Note: we can't access client.redirectUri directly as it's private, 
+  // but we logged the setup in getOAuth2Client if needed or we can re-calculate
   res.json({ url });
 });
 
 app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
   const { code } = req.query;
-  const client = getOAuth2Client();
+  const client = getOAuth2Client(req);
   try {
     const { tokens } = await client.getToken(code as string);
     client.setCredentials(tokens);
