@@ -228,7 +228,16 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log('Mobile device detected - using direct redirect');
       try {
         const response = await fetch('/api/auth/url');
-        const data = await response.json();
+        const contentType = response.headers.get('content-type');
+        
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+        } else {
+          const text = await response.text();
+          throw new Error(`Server err: ${text.slice(0, 100)}`);
+        }
+
         if (!response.ok) throw new Error(data.details || data.error || `Server returned ${response.status}`);
         
         console.log('Redirecting to Google Auth with URI:', data.redirectUri);
@@ -236,7 +245,7 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return;
       } catch (err: any) {
         console.error('Failed to get auth URL:', err);
-        setError(`Login initiation failed: ${err.message}. Check your console environment variables.`);
+        setError(`Login failed: ${err.message}. Please check your environment variables.`);
         window.removeEventListener('message', handleMessage);
         return;
       }
@@ -266,13 +275,23 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       try {
         const response = await fetch('/api/auth/url');
-        const data = await response.json();
+        const contentType = response.headers.get('content-type');
+        
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+        } else {
+          const text = await response.text();
+          throw new Error(`Server returned non-JSON response: ${text.slice(0, 200)}`);
+        }
+
         if (!response.ok) throw new Error(data.details || data.error || `HTTP ${response.status}`);
         
         if (popup && !popup.closed) {
           console.log('Updating popup location. Redirect URI being used:', data.redirectUri);
           try {
-            popup.document.getElementById('status')!.innerText = `Relaying to: ${data.redirectUri}`;
+            const statusEl = popup.document.getElementById('status');
+            if (statusEl) statusEl.innerText = `Relaying to Google Auth...`;
           } catch (e) {}
           popup.location.href = data.url;
         } else {
@@ -285,10 +304,10 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setError(msg);
         if (popup && !popup.closed) {
           popup.document.body.innerHTML = `
-            <div style="color: #ff0033; font-weight: bold; font-family: sans-serif;">
-              <h3>Initialization Failure</h3>
-              <p style="font-size: 12px; color: white; opacity: 0.8;">${err.message}</p>
-              <button onclick="window.close()" style="background: white; color: black; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer;">Close Window</button>
+            <div style="color: #ff0033; font-weight: bold; font-family: sans-serif; text-align: center; padding: 20px;">
+              <h3 style="margin-top: 0;">Initialization Failure</h3>
+              <p style="font-size: 12px; color: white; opacity: 0.8; word-break: break-all;">${err.message}</p>
+              <button onclick="window.close()" style="background: white; color: black; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px;">Close Window</button>
             </div>
           `;
         }
