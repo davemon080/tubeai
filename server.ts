@@ -80,7 +80,11 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
 
     // Get user info to store in DB
     const oauth2 = google.oauth2({ version: 'v2', auth: client });
-    const userInfo = await oauth2.userinfo.get();
+    console.log('Fetching user info for session...');
+    const userInfo = await oauth2.userinfo.get().catch(err => {
+      console.error('Failed to get user info:', err.message);
+      return { data: { email: null, id: null } };
+    });
     const email = userInfo.data.email;
     const googleId = userInfo.data.id;
 
@@ -143,10 +147,7 @@ app.post('/api/auth/refresh', async (req, res) => {
   if (!refresh_token) return res.status(400).json({ error: 'No refresh token' });
   
   try {
-    const client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
+    const client = getOAuth2Client(req);
     client.setCredentials({ refresh_token });
     const { credentials } = await client.refreshAccessToken();
     res.json(credentials);
