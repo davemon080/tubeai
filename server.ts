@@ -13,12 +13,16 @@ app.use(express.json());
 
 // Health check
 app.get('/api/health', (req, res) => {
+  const host = req.headers.host || 'unknown';
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
   res.json({ 
     status: 'ok', 
     environment: process.env.NODE_ENV, 
     vercel: !!process.env.VERCEL,
     hasClientId: !!process.env.GOOGLE_CLIENT_ID,
     hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+    detectedHost: host,
+    detectedProto: proto,
     appUrl: process.env.APP_URL || 'Not Set (using dynamic detection)'
   });
 });
@@ -73,8 +77,10 @@ app.get('/api/auth/url', (req, res) => {
     scope: SCOPES,
     prompt: 'consent' // Ensure we get a refresh token every time during testing if needed
   });
-  // Note: we can't access client.redirectUri directly as it's private, 
-  // but we logged the setup in getOAuth2Client if needed or we can re-calculate
+  
+  // Log the redirect URI being used (helpful for debugging Vercel/Production)
+  console.log('Generating auth URL with redirect_uri:', (client as any).redirectUri);
+  
   res.json({ url });
 });
 
@@ -173,22 +179,29 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     try {
       // Isolate Vite to avoid crashes in production/serverless environments
-      const { setupVite } = await import('./vite-server');
+      const { setupVite } = await import('./vite-server.js');
       await setupVite(app);
     } catch (err) {
-      console.error('Failed to load Vite server helper:', err);
+      console.error('Vite dev server failed to load:', err);
     }
-  } else if (!process.env.VERCEL) {
-    // In other production environments (like Cloud Run), serve static files from dist
+  } else {
+    // In production (Vercel or other), serve static files
+    // Vercel handles this via vercel.json rewrites, but for direct node serving:
     const distPath = path.resolve('dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*', (req, res, next) => {
+      // If it's an API route that somehow reached here, skip
+      if (req.path.startsWith('/api') || req.path.startsWith('/auth')) {
+        return next();
+      }
+      res.sendFile(path.join(distPath, 'index.html'), (err) => {
+        if (err) next();
+      });
     });
   }
 
-  // Only listen if not on Vercel and not in a test/import context
-  if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+  // Only listen if not on Vercel
+  if (!process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });

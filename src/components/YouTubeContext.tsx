@@ -208,101 +208,105 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const login = async () => {
     setError(null);
-    console.log('Starting login flow...');
+    console.log('Login button clicked');
     
     // Simple mobile detection
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    if (isMobile) {
-      console.log('Mobile detected, using direct redirect');
-      try {
-        const response = await fetch('/api/auth/url');
-        if (!response.ok) throw new Error(`Server responded with ${response.status}`);
-        const { url } = await response.json();
-        window.location.href = url;
-        return;
-      } catch (err: any) {
-        console.error('Mobile login initiation failed:', err);
-        setError(`Login failed: ${err.message || 'Unknown error'}`);
-        return;
-      }
-    }
-
-    // Popup flow for desktop
+    // Always start by listener to handle both popup and potential same-window redirect messages if any
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        console.log('OAuth success message received');
+        console.log('OAuth success message received via postMessage');
         setTokens(event.data.tokens);
         window.removeEventListener('message', handleMessage);
       }
     };
     
     window.addEventListener('message', handleMessage);
-    
+
+    if (isMobile) {
+      console.log('Mobile device detected - using direct redirect');
+      try {
+        const response = await fetch('/api/auth/url');
+        if (!response.ok) throw new Error(`Server returned ${response.status}`);
+        const { url } = await response.json();
+        console.log('Redirecting to:', url);
+        window.location.href = url;
+        return;
+      } catch (err: any) {
+        console.error('Failed to get auth URL:', err);
+        setError(`Login failed: ${err.message}`);
+        window.removeEventListener('message', handleMessage);
+        return;
+      }
+    }
+
+    // Desktop/Tablet: Try popup first
+    console.log('Attempting to open popup...');
     const popup = window.open('', 'youtube_auth', 'width=600,height=700');
     
     if (popup) {
-      console.log('Popup opened successfully');
+      console.log('Popup window reference obtained');
       try {
         popup.document.write(`
           <html>
-            <head><title>Loading Studio Auth...</title></head>
-            <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #050505; color: white;">
-              <div style="width: 30px; height: 30px; border: 3px solid #ff0033; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-              <p style="margin-top: 20px; font-weight: bold; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6;">Initializing Protocol...</p>
+            <head><title>Studio Auth Initiation</title></head>
+            <body style="background: #050505; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif;">
+              <div style="border: 4px solid #ff0033; border-top-color: transparent; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;"></div>
+              <p style="margin-top: 20px; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase;">Establishing Secure Link...</p>
               <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
             </body>
           </html>
         `);
       } catch (e) {
-        console.warn('Could not write to popup document:', e);
+        console.warn('Popup document write failed:', e);
+      }
+
+      try {
+        const response = await fetch('/api/auth/url');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const { url } = await response.json();
+        
+        if (popup && !popup.closed) {
+          console.log('Updating popup location to Google Auth');
+          popup.location.href = url;
+        } else {
+          console.log('Popup closed during fetch, redirecting main window');
+          window.location.href = url;
+        }
+      } catch (err: any) {
+        console.error('Fetch auth URL failed:', err);
+        setError('Connection issue. Redirecting...');
+        // Final fallback: redirect current window
+        try {
+          const res = await fetch('/api/auth/url');
+          const { url } = await res.json();
+          window.location.href = url;
+        } catch (e) {
+          setError('System offline. Please check your connection.');
+          if (popup) popup.close();
+        }
       }
     } else {
-      console.warn('Popup was blocked by the browser');
-      // If popup is blocked, fallback to direct redirect even on desktop
+      console.warn('Popup blocked, falling back to direct redirect');
       try {
         const response = await fetch('/api/auth/url');
         const { url } = await response.json();
         window.location.href = url;
-        return;
       } catch (err: any) {
-        setError('Popup blocked and fallback failed');
-        return;
+        setError('Authentication triggered but popup was blocked or network failed.');
       }
     }
 
-    try {
-      console.log('Fetching auth URL from server...');
-      const response = await fetch('/api/auth/url');
-      
-      if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`);
+    // Cleanup interval for popup
+    const checkInterval = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(checkInterval);
+        console.log('Popup window closed');
+        // We don't remove the listener immediately as there might be a slight delay in postMessage
+        setTimeout(() => window.removeEventListener('message', handleMessage), 2000);
       }
-      
-      const { url } = await response.json();
-      console.log('Received auth URL, redirecting...');
-      
-      if (popup && !popup.closed) {
-        popup.location.href = url;
-      } else {
-        console.log('Popup closed or missing, redirecting main window');
-        window.location.href = url;
-      }
-      
-      // Cleanup listener if window is closed without success
-      const checkClosed = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', handleMessage);
-        }
-      }, 1000);
-
-    } catch (err: any) {
-      console.error('Login initiation failed:', err);
-      setError(`Login failed: ${err.message || 'Unknown error'}`);
-      if (popup) popup.close();
-      window.removeEventListener('message', handleMessage);
-    }
+    }, 1000);
   };
 
   const logout = () => {
