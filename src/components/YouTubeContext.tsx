@@ -32,6 +32,7 @@ const YouTubeContext = createContext<YouTubeContextType | undefined>(undefined);
 
 export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tokens, setTokensState] = useState<YouTubeTokens | null>(() => {
+    if (typeof window === 'undefined') return null;
     const saved = localStorage.getItem('yt_tokens');
     return saved ? JSON.parse(saved) : null;
   });

@@ -10,6 +10,7 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.set('trust proxy', true);
 
 // Global error handler for uncaught exceptions to help debugging
 process.on('uncaughtException', (err) => {

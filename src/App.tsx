@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { YouTubeProvider, useYouTube } from './components/YouTubeContext';
 import { ThemeProvider, useTheme } from './components/ThemeContext';
 import AuthView from './components/AuthView';
@@ -20,7 +20,15 @@ const AppContent = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'analysis' | 'videos' | 'editor' | 'settings'>('dashboard');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const { theme } = useTheme();
+
+  useEffect(() => {
+    const updateDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    updateDesktop();
+    window.addEventListener('resize', updateDesktop);
+    return () => window.removeEventListener('resize', updateDesktop);
+  }, []);
 
   if (isLoading) {
     return (
@@ -143,7 +151,7 @@ const AppContent = () => {
 
       {/* Sidebar - Pro Design */}
       <AnimatePresence>
-        {(isSidebarOpen || window.innerWidth >= 1024) && (
+        {(isSidebarOpen || isDesktop) && (
           <>
             {/* Mobile Overlay */}
             <motion.div 

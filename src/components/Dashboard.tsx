@@ -312,7 +312,7 @@ function StatComponent({ label, value, icon, accent = false, delay = 0, theme }:
   );
 }
 
-function VideoCard({ video, index, onClick, theme }: { video: YouTubeVideo, index: number, onClick: () => void, theme: string }) {
+function VideoCard({ video, index, onClick, theme }: { video: YouTubeVideo, index: number, onClick: () => void, theme: string, key?: React.Key }) {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
