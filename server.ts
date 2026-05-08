@@ -47,7 +47,8 @@ function getOAuth2Client(req?: express.Request) {
   // to ensure the callback URL matches the environment (prod vs preview)
   const forwardedProto = req?.headers['x-forwarded-proto'];
   const protocol = (typeof forwardedProto === 'string' ? forwardedProto : req?.protocol) || 'https';
-  const host = req?.headers.host || 'localhost:3000';
+  // Use x-forwarded-host specifically on Vercel for custom domains
+  const host = req?.headers['x-forwarded-host'] || req?.headers.host || 'localhost:3000';
   
   // Force https unless we are explicitly on localhost
   const finalProtocol = (host.includes('localhost') || host.includes('127.0.0.1')) ? 'http' : 'https';
@@ -55,9 +56,12 @@ function getOAuth2Client(req?: express.Request) {
   const baseUrl = process.env.APP_URL || `${finalProtocol}://${host}`;
   const redirectUri = `${baseUrl.replace(/\/$/, '')}/auth/callback`;
 
+  const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+
   return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID || 'MISSING_CLIENT_ID',
-    process.env.GOOGLE_CLIENT_SECRET || 'MISSING_CLIENT_SECRET',
+    clientId || 'MISSING_CLIENT_ID',
+    clientSecret || 'MISSING_CLIENT_SECRET',
     redirectUri
   );
 }
@@ -71,17 +75,32 @@ const SCOPES = [
 
 // OAUTH ROUTES
 app.get('/api/auth/url', (req, res) => {
-  const client = getOAuth2Client(req);
-  const url = client.generateAuthUrl({
-    access_type: 'offline', // Critical for refresh tokens
-    scope: SCOPES,
-    prompt: 'consent' // Ensure we get a refresh token every time during testing if needed
-  });
-  
-  // Log the redirect URI being used (helpful for debugging Vercel/Production)
-  console.log('Generating auth URL with redirect_uri:', (client as any).redirectUri);
-  
-  res.json({ url });
+  try {
+    const client = getOAuth2Client(req);
+    
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error('CRITICAL: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing from environment variables');
+      return res.status(500).json({ 
+        error: 'Server configuration error: OAuth credentials missing.',
+        details: 'Ask the developer to check the Vercel/environment variables.'
+      });
+    }
+
+    const url = client.generateAuthUrl({
+      access_type: 'offline', // Critical for refresh tokens
+      scope: SCOPES,
+      prompt: 'consent' // Ensure we get a refresh token
+    });
+    
+    // Explicitly log for debugging
+    const redirectUri = (client as any).redirectUri;
+    console.log('Success: Generated auth URL. Redirect URI:', redirectUri);
+    
+    res.json({ url, redirectUri }); // Return redirectUri too so frontend can log it if needed
+  } catch (err: any) {
+    console.error('Error generating auth URL:', err);
+    res.status(500).json({ error: 'Failed to generate auth URL', details: err.message });
+  }
 });
 
 app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {

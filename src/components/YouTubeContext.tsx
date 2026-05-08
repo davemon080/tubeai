@@ -228,14 +228,15 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log('Mobile device detected - using direct redirect');
       try {
         const response = await fetch('/api/auth/url');
-        if (!response.ok) throw new Error(`Server returned ${response.status}`);
-        const { url } = await response.json();
-        console.log('Redirecting to:', url);
-        window.location.href = url;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.details || data.error || `Server returned ${response.status}`);
+        
+        console.log('Redirecting to Google Auth with URI:', data.redirectUri);
+        window.location.href = data.url;
         return;
       } catch (err: any) {
         console.error('Failed to get auth URL:', err);
-        setError(`Login failed: ${err.message}`);
+        setError(`Login initiation failed: ${err.message}. Check your console environment variables.`);
         window.removeEventListener('message', handleMessage);
         return;
       }
@@ -251,9 +252,10 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
         popup.document.write(`
           <html>
             <head><title>Studio Auth Initiation</title></head>
-            <body style="background: #050505; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif;">
+            <body style="background: #050505; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; text-align: center; padding: 20px;">
               <div style="border: 4px solid #ff0033; border-top-color: transparent; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;"></div>
-              <p style="margin-top: 20px; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase;">Establishing Secure Link...</p>
+              <p style="margin-top: 20px; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: bold;">Establishing Secure Link...</p>
+              <p id="status" style="font-size: 10px; opacity: 0.5; margin-top: 10px;">Negotiating with Google OAuth 2.0</p>
               <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
             </body>
           </html>
@@ -264,37 +266,42 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       try {
         const response = await fetch('/api/auth/url');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const { url } = await response.json();
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.details || data.error || `HTTP ${response.status}`);
         
         if (popup && !popup.closed) {
-          console.log('Updating popup location to Google Auth');
-          popup.location.href = url;
+          console.log('Updating popup location. Redirect URI being used:', data.redirectUri);
+          try {
+            popup.document.getElementById('status')!.innerText = `Relaying to: ${data.redirectUri}`;
+          } catch (e) {}
+          popup.location.href = data.url;
         } else {
           console.log('Popup closed during fetch, redirecting main window');
-          window.location.href = url;
+          window.location.href = data.url;
         }
       } catch (err: any) {
         console.error('Fetch auth URL failed:', err);
-        setError('Connection issue. Redirecting...');
-        // Final fallback: redirect current window
-        try {
-          const res = await fetch('/api/auth/url');
-          const { url } = await res.json();
-          window.location.href = url;
-        } catch (e) {
-          setError('System offline. Please check your connection.');
-          if (popup) popup.close();
+        const msg = `Auth Link Failed: ${err.message}`;
+        setError(msg);
+        if (popup && !popup.closed) {
+          popup.document.body.innerHTML = `
+            <div style="color: #ff0033; font-weight: bold; font-family: sans-serif;">
+              <h3>Initialization Failure</h3>
+              <p style="font-size: 12px; color: white; opacity: 0.8;">${err.message}</p>
+              <button onclick="window.close()" style="background: white; color: black; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer;">Close Window</button>
+            </div>
+          `;
         }
       }
     } else {
       console.warn('Popup blocked, falling back to direct redirect');
       try {
         const response = await fetch('/api/auth/url');
-        const { url } = await response.json();
-        window.location.href = url;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Fetch failed');
+        window.location.href = data.url;
       } catch (err: any) {
-        setError('Authentication triggered but popup was blocked or network failed.');
+        setError('Authentication triggered but popup was blocked or network failed. Error: ' + err.message);
       }
     }
 
