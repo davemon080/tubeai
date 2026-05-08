@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'channelId']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.channelId is string && data.channelId.size() <= 128;
+    }
+
+    function isValidVideo(data) {
+      return data.keys().hasAll(['youtubeVideoId', 'userId']) &&
+             data.youtubeVideoId is string && data.youtubeVideoId.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128;
+    }
+
+    function isValidSchedule(data) {
+      return data.keys().hasAll(['userId', 'title', 'status']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 500 &&
+             data.status in ['pending', 'completed', 'failed'] &&
+             (!('scheduleTime' in data) || data.scheduleTime is timestamp);
+    }
+
+    // --- Collections ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().uid == existing().uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['channelId', 'channelTitle', 'thumbnails', 'email', 'updatedAt']);
+      
+      match /videos/{videoId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidVideo(incoming()) && incoming().userId == userId;
+        allow update: if isOwner(userId) && isValidVideo(incoming()) && 
+                      incoming().userId == existing().userId &&
+                      incoming().youtubeVideoId == existing().youtubeVideoId;
+        allow delete: if isOwner(userId);
+      }
+
+      match /schedules/{scheduleId} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSchedule(incoming()) && incoming().userId == userId;
+        allow update: if isOwner(userId) && isValidSchedule(incoming()) && 
+                      incoming().userId == existing().userId &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'scheduleTime', 'status']);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

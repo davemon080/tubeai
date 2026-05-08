@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "YouTube channel owner and app user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "channelId": { "type": "string" },
+        "channelTitle": { "type": "string" },
+        "thumbnails": { "type": "object" },
+        "email": { "type": "string", "format": "email" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "channelId"]
+    },
+    "Video": {
+      "title": "Video",
+      "description": "YouTube video metadata and cached analytics",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "youtubeVideoId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "viewCount": { "type": "integer" },
+        "likeCount": { "type": "integer" },
+        "commentCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Schedule": {
+      "title": "Upload Schedule",
+      "description": "Pending video uploads",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "scheduleTime": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile and YouTube channel link"
+    },
+    "users/{userId}/videos/{videoId}": {
+      "schema": "Video",
+      "description": "List of videos owned by the user"
+    },
+    "users/{userId}/schedules/{scheduleId}": {
+      "schema": "Schedule",
+      "description": "Scheduled upload tasks"
+    }
+  }
+}

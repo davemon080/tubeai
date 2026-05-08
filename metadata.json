@@ -1,0 +1,14 @@
+{
+  "name": "TubeManager AI",
+  "description": "YouTube account management dashboard with automated thumbnails, scheduling, and analytics visualization.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "YouTube API Integration",
+    "Video Analytics Dashboard",
+    "Upload Scheduling",
+    "AI Thumbnail Concepts"
+  ]
+}
