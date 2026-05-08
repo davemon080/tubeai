@@ -142,14 +142,11 @@ app.post('/api/auth/refresh', async (req, res) => {
 async function startServer() {
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     try {
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa'
-      });
-      app.use(vite.middlewares);
+      // Isolate Vite to avoid crashes in production/serverless environments
+      const { setupVite } = await import('./vite-server');
+      await setupVite(app);
     } catch (err) {
-      console.error('Failed to load Vite:', err);
+      console.error('Failed to load Vite server helper:', err);
     }
   } else if (!process.env.VERCEL) {
     // In other production environments (like Cloud Run), serve static files from dist
