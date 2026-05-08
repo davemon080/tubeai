@@ -13,7 +13,14 @@ app.use(express.json());
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', environment: process.env.NODE_ENV, vercel: !!process.env.VERCEL });
+  res.json({ 
+    status: 'ok', 
+    environment: process.env.NODE_ENV, 
+    vercel: !!process.env.VERCEL,
+    hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+    hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+    appUrl: process.env.APP_URL || 'Not Set (using dynamic detection)'
+  });
 });
 
 // Database setup
@@ -111,14 +118,16 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
           <p>Authentication successful! Redirecting...</p>
           <script>
             try {
-              const tokens = ${JSON.stringify(tokens)};
-              if (window.opener) {
-                window.opener.postMessage({ 
-                  type: 'OAUTH_AUTH_SUCCESS', 
-                  tokens: tokens 
-                }, '*');
-                window.close();
-              } else {
+                const tokens = ${JSON.stringify(tokens)};
+                console.log('Auth success, sending message to opener...');
+                if (window.opener) {
+                  window.opener.postMessage({ 
+                    type: 'OAUTH_AUTH_SUCCESS', 
+                    tokens: tokens 
+                  }, '*');
+                  // Give it a tiny moment to send before closing
+                  setTimeout(() => window.close(), 500);
+                } else {
                 // If no opener, we might be in the same window (common on mobile)
                 localStorage.setItem('yt_tokens', JSON.stringify(tokens));
                 window.location.href = '/';

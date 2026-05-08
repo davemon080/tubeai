@@ -210,7 +210,35 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setError(null);
     console.log('Starting login flow...');
     
-    // Open a blank window immediately while we fetch the URL
+    // Simple mobile detection
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      console.log('Mobile detected, using direct redirect');
+      try {
+        const response = await fetch('/api/auth/url');
+        if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+        const { url } = await response.json();
+        window.location.href = url;
+        return;
+      } catch (err: any) {
+        console.error('Mobile login initiation failed:', err);
+        setError(`Login failed: ${err.message || 'Unknown error'}`);
+        return;
+      }
+    }
+
+    // Popup flow for desktop
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        console.log('OAuth success message received');
+        setTokens(event.data.tokens);
+        window.removeEventListener('message', handleMessage);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    
     const popup = window.open('', 'youtube_auth', 'width=600,height=700');
     
     if (popup) {
@@ -230,7 +258,17 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.warn('Could not write to popup document:', e);
       }
     } else {
-      console.warn('Popup was blocked or failed to open');
+      console.warn('Popup was blocked by the browser');
+      // If popup is blocked, fallback to direct redirect even on desktop
+      try {
+        const response = await fetch('/api/auth/url');
+        const { url } = await response.json();
+        window.location.href = url;
+        return;
+      } catch (err: any) {
+        setError('Popup blocked and fallback failed');
+        return;
+      }
     }
 
     try {
@@ -247,19 +285,9 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (popup && !popup.closed) {
         popup.location.href = url;
       } else {
-        console.log('No popup available, redirecting main window');
+        console.log('Popup closed or missing, redirecting main window');
         window.location.href = url;
       }
-      
-      const handleMessage = (event: MessageEvent) => {
-        if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-          console.log('OAuth success message received');
-          setTokens(event.data.tokens);
-          window.removeEventListener('message', handleMessage);
-        }
-      };
-      
-      window.addEventListener('message', handleMessage);
       
       // Cleanup listener if window is closed without success
       const checkClosed = setInterval(() => {
@@ -273,6 +301,7 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Login initiation failed:', err);
       setError(`Login failed: ${err.message || 'Unknown error'}`);
       if (popup) popup.close();
+      window.removeEventListener('message', handleMessage);
     }
   };
 
