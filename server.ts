@@ -34,9 +34,14 @@ let oauth2ClientInstance: any = null;
 function getOAuth2Client(req?: express.Request) {
   // Always recreate or update the redirect URI based on the current request if on Vercel/Production
   // to ensure the callback URL matches the environment (prod vs preview)
-  const protocol = req?.headers['x-forwarded-proto'] || req?.protocol || 'http';
+  const forwardedProto = req?.headers['x-forwarded-proto'];
+  const protocol = (typeof forwardedProto === 'string' ? forwardedProto : req?.protocol) || 'https';
   const host = req?.headers.host || 'localhost:3000';
-  const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+  
+  // Force https unless we are explicitly on localhost
+  const finalProtocol = (host.includes('localhost') || host.includes('127.0.0.1')) ? 'http' : 'https';
+  
+  const baseUrl = process.env.APP_URL || `${finalProtocol}://${host}`;
   const redirectUri = `${baseUrl.replace(/\/$/, '')}/auth/callback`;
 
   return new google.auth.OAuth2(
@@ -99,18 +104,26 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
     res.send(`
       <html>
         <body>
+          <p>Authentication successful! Redirecting...</p>
           <script>
-            if (window.opener) {
-              window.opener.postMessage({ 
-                type: 'OAUTH_AUTH_SUCCESS', 
-                tokens: ${JSON.stringify(tokens)} 
-              }, '*');
-              window.close();
-            } else {
-              window.location.href = '/';
+            try {
+              const tokens = ${JSON.stringify(tokens)};
+              if (window.opener) {
+                window.opener.postMessage({ 
+                  type: 'OAUTH_AUTH_SUCCESS', 
+                  tokens: tokens 
+                }, '*');
+                window.close();
+              } else {
+                // If no opener, we might be in the same window (common on mobile)
+                localStorage.setItem('yt_tokens', JSON.stringify(tokens));
+                window.location.href = '/';
+              }
+            } catch (err) {
+              console.error('Callback error:', err);
+              window.location.href = '/?error=auth_callback_failed';
             }
           </script>
-          <p>Authentication successful! Closing window...</p>
         </body>
       </html>
     `);

@@ -76,6 +76,31 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   useEffect(() => {
+    // Check for tokens in localStorage on mount (for mobile redirects)
+    const saved = localStorage.getItem('yt_tokens');
+    if (saved && !tokens) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.access_token) {
+          setTokens(parsed);
+        }
+      } catch (e) {
+        console.error('Failed to parse saved tokens:', e);
+      }
+    }
+
+    // Check for errors in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlError = urlParams.get('error');
+    if (urlError === 'auth_callback_failed') {
+      setError('Authentication failed during callback. Please try again.');
+      // Clean up URL
+      const newUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []);
+
+  useEffect(() => {
     if (tokens?.access_token) {
       loadChannel();
     }
@@ -182,21 +207,72 @@ export const YouTubeProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const login = async () => {
+    setError(null);
+    console.log('Starting login flow...');
+    
+    // Open a blank window immediately while we fetch the URL
+    const popup = window.open('', 'youtube_auth', 'width=600,height=700');
+    
+    if (popup) {
+      console.log('Popup opened successfully');
+      try {
+        popup.document.write(`
+          <html>
+            <head><title>Loading Studio Auth...</title></head>
+            <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #050505; color: white;">
+              <div style="width: 30px; height: 30px; border: 3px solid #ff0033; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+              <p style="margin-top: 20px; font-weight: bold; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6;">Initializing Protocol...</p>
+              <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+            </body>
+          </html>
+        `);
+      } catch (e) {
+        console.warn('Could not write to popup document:', e);
+      }
+    } else {
+      console.warn('Popup was blocked or failed to open');
+    }
+
     try {
+      console.log('Fetching auth URL from server...');
       const response = await fetch('/api/auth/url');
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+      
       const { url } = await response.json();
-      const popup = window.open(url, 'youtube_auth', 'width=600,height=700');
+      console.log('Received auth URL, redirecting...');
+      
+      if (popup && !popup.closed) {
+        popup.location.href = url;
+      } else {
+        console.log('No popup available, redirecting main window');
+        window.location.href = url;
+      }
       
       const handleMessage = (event: MessageEvent) => {
         if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+          console.log('OAuth success message received');
           setTokens(event.data.tokens);
           window.removeEventListener('message', handleMessage);
         }
       };
       
       window.addEventListener('message', handleMessage);
+      
+      // Cleanup listener if window is closed without success
+      const checkClosed = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkClosed);
+          window.removeEventListener('message', handleMessage);
+        }
+      }, 1000);
+
     } catch (err: any) {
-      setError('Failed to initiate login');
+      console.error('Login initiation failed:', err);
+      setError(`Login failed: ${err.message || 'Unknown error'}`);
+      if (popup) popup.close();
     }
   };
 
