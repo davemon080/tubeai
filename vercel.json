@@ -1,34 +1,18 @@
 {
   "version": 2,
-  "builds": [
+  "framework": "vite",
+  "rewrites": [
     {
-      "src": "server.ts",
-      "use": "@vercel/node"
+      "source": "/api/(.*)",
+      "destination": "/api/index"
     },
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "server.ts"
+      "source": "/auth/(.*)",
+      "destination": "/api/index"
     },
     {
-      "src": "/auth/(.*)",
-      "dest": "server.ts"
-    },
-    {
-      "src": "/assets/(.*)",
-      "dest": "dist/assets/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "server.ts"
+      "source": "/(.*)",
+      "destination": "/$1"
     }
   ]
 }

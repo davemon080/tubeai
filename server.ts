@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { google } from 'googleapis';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -12,15 +11,24 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Database setup
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', environment: process.env.NODE_ENV, vercel: !!process.env.VERCEL });
 });
 
+// Database setup
+const pool = process.env.DATABASE_URL ? new Pool({
+  connectionString: process.env.DATABASE_URL,
+}) : null;
+
+if (!process.env.DATABASE_URL) {
+  console.warn('WARNING: DATABASE_URL not found. Database features will be disabled.');
+}
+
 const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  `${process.env.APP_URL}/auth/callback`
+  process.env.GOOGLE_CLIENT_ID || 'MISSING_CLIENT_ID',
+  process.env.GOOGLE_CLIENT_SECRET || 'MISSING_CLIENT_SECRET',
+  process.env.APP_URL ? `${process.env.APP_URL}/auth/callback` : 'http://localhost:3000/auth/callback'
 );
 
 const SCOPES = [
@@ -52,7 +60,7 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
     const email = userInfo.data.email;
     const googleId = userInfo.data.id;
 
-    if (email && googleId && process.env.DATABASE_URL) {
+    if (email && googleId && pool) {
       try {
         await pool.query(
           `INSERT INTO users (email, google_id) 
@@ -120,22 +128,31 @@ app.post('/api/auth/refresh', async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
+  } else if (!process.env.VERCEL) {
+    // In other production environments, serve static files
+    const distPath = path.resolve('dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+// Global server initialization
+startServer().catch(err => {
+  console.error('Failed to initialize server:', err);
+});
+
+export default app;

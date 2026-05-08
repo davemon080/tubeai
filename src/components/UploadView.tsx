@@ -1,13 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useYouTube } from './YouTubeContext';
 import { useTheme } from './ThemeContext';
-import { GoogleGenAI } from '@google/genai';
 import { uploadVideo } from '../lib/youtube';
-import { Upload, ImageIcon, Sparkles, AlertCircle, CheckCircle2, Wand2, Terminal, FileVideo, X, Loader2, ChevronRight, ChevronLeft, Globe, Lock, EyeOff, Calendar, Play } from 'lucide-react';
+import { Upload, ImageIcon, AlertCircle, CheckCircle2, Terminal, FileVideo, X, ChevronRight, ChevronLeft, Globe, Lock, EyeOff, Calendar, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import ReactMarkdown from 'react-markdown';
-
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export default function UploadView({ onClose }: { onClose: () => void }) {
   const { tokens, setQuotaExceeded, addUpload, updateUploadProgress, completeUpload, failUpload } = useYouTube();
@@ -23,8 +19,6 @@ export default function UploadView({ onClose }: { onClose: () => void }) {
   const [isPremiere, setIsPremiere] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');
   
-  const [generatingThumbnail, setGeneratingThumbnail] = useState(false);
-  const [thumbnailConcept, setThumbnailConcept] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbInputRef = useRef<HTMLInputElement>(null);
@@ -93,24 +87,6 @@ export default function UploadView({ onClose }: { onClose: () => void }) {
       if (err.message?.includes('quota')) {
         setQuotaExceeded(true);
       }
-    }
-  };
-
-  const generateConcept = async () => {
-    if (!title) return;
-    setGeneratingThumbnail(true);
-    try {
-      const response = await genAI.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `I'm a YouTuber. My video title is "${title}". Description: "${description}". 
-        Give me 3 creative visual concepts for high-clickthrough thumbnails and 1 recommendation for the "hook" text on the thumbnail image.
-        Format as Markdown with bold headers.`
-      });
-      setThumbnailConcept(response.text || "Failed to generate concept");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setGeneratingThumbnail(false);
     }
   };
 
@@ -239,7 +215,7 @@ export default function UploadView({ onClose }: { onClose: () => void }) {
                     <div className="flex gap-4">
                       <div 
                         onClick={() => thumbInputRef.current?.click()}
-                        className={`w-40 aspect-video rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:bg-[#ff0033]/5 overflow-hidden ${
+                        className={`w-full aspect-video rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:bg-[#ff0033]/5 overflow-hidden ${
                           theme === 'dark' ? 'border-white/10' : 'border-black/10'
                         }`}
                       >
@@ -253,17 +229,6 @@ export default function UploadView({ onClose }: { onClose: () => void }) {
                         )}
                         <input type="file" ref={thumbInputRef} className="hidden" accept="image/*" onChange={handleThumbnailChange} />
                       </div>
-                      
-                      <button 
-                        onClick={generateConcept}
-                        disabled={generatingThumbnail}
-                        className={`flex-1 flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed transition-all hover:bg-[#ff0033]/5 font-bold text-[10px] uppercase tracking-widest ${
-                          theme === 'dark' ? 'border-white/10 text-white' : 'border-black/10 text-black'
-                        }`}
-                      >
-                        {generatingThumbnail ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                        AI Concept Assistant
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -299,24 +264,6 @@ export default function UploadView({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   </div>
-
-                  <AnimatePresence>
-                    {thumbnailConcept && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-[#ff0033]/10 border border-[#ff0033]/20 p-8 rounded-[32px] space-y-4"
-                      >
-                        <div className="flex items-center gap-2 text-[#ff0033]">
-                          <Sparkles size={16} />
-                          <span className="text-[10px] font-black uppercase tracking-widest">AI Thumbnail Report</span>
-                        </div>
-                        <div className="prose prose-invert prose-sm max-w-none text-xs leading-relaxed max-h-[200px] overflow-y-auto">
-                           <ReactMarkdown>{thumbnailConcept}</ReactMarkdown>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
               </motion.div>
             )}
